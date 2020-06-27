@@ -233,7 +233,7 @@ func (lyr *LayerTable) GetBoundsExact() (Bounds, error) {
 	WITH ext AS (
 		SELECT
 			coalesce(
-				ST_Transform(ST_SetSRID(ST_Extent("%s"), %d), 4326),
+				ST_Transform(ST_SetSRID(ST_Extent("%s"::geometry), %d), 4326),
 				ST_MakeEnvelope(-180, -90, 180, 90, 4326)
 			) AS geom
 		FROM "%s"."%s"
@@ -388,7 +388,7 @@ func (lyr *LayerTable) requestSql(tile *Tile, qp *queryParameters) (string, erro
 	tmplSql := `
 	SELECT ST_AsMVT(mvtgeom, {{ .MvtParams }}) FROM (
 		SELECT ST_AsMVTGeom(
-			ST_Transform(ST_Force2D(t."{{ .GeometryColumn }}"), 3857),
+			ST_Transform(ST_Force2D(t."{{ .GeometryColumn }}"::geometry), 3857),
 			bounds.geom_clip,
 			{{ .Resolution }},
 			{{ .Buffer }}
@@ -400,7 +400,7 @@ func (lyr *LayerTable) requestSql(tile *Tile, qp *queryParameters) (string, erro
 			SELECT {{ .TileSql }}  AS geom_clip,
 					{{ .QuerySql }} AS geom_query
 			) bounds
-		WHERE ST_Intersects(t."{{ .GeometryColumn }}",
+		WHERE ST_Intersects(t."{{ .GeometryColumn }}"::geometry,
 							ST_Transform(bounds.geom_query, {{ .Srid }}))
 		{{ .Limit }}
 	) mvtgeom
@@ -444,7 +444,7 @@ func GetTableLayers() ([]LayerTable, error) {
 	LEFT JOIN pg_attribute ia ON (ia.attrelid = i.indexrelid)
 	LEFT JOIN pg_type it ON (ia.atttypid = it.oid AND it.typname in ('int2', 'int4', 'int8'))
 	WHERE c.relkind IN ('r', 'v')
-		AND t.typname = 'geometry'
+		AND t.typname IN ('geometry', 'geography')
 		AND has_table_privilege(c.oid, 'select')
 		AND has_schema_privilege(n.oid, 'usage')
 		AND postgis_typmod_srid(a.atttypmod) > 0
