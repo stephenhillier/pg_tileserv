@@ -138,8 +138,8 @@ COMMENT ON TABLE ne_50m_admin_0_countries IS 'This is my comment';
 By default, `pg_tileserv` will provide access to **only** those spatial tables:
 
 * that your database connection has `SELECT` privileges for;
-* that include a geometry column;
-* that declare a geometry type; and,
+* that include a geometry or geography column;
+* that declare a geometry/geography type; and,
 * that declare an SRID (spatial reference ID)
 
 For example:

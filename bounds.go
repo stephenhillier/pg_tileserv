@@ -19,10 +19,16 @@ func (b *Bounds) String() string {
 }
 
 // SQL returns the SQL fragment to create this bounds in the database
-func (b *Bounds) SQL() string {
-	return fmt.Sprintf("ST_MakeEnvelope(%g, %g, %g, %g, 3857)",
+func (b *Bounds) SQL(targetSpatialType string, targetSrid int) string {
+	sql := fmt.Sprintf("ST_Transform(ST_MakeEnvelope(%g, %g, %g, %g, 3857), %d)",
 		b.Xmin, b.Ymin,
-		b.Xmax, b.Ymax)
+		b.Xmax, b.Ymax, targetSrid)
+
+	if targetSpatialType == "geography" {
+		sql = fmt.Sprintf("Geography(%s)", sql)
+	}
+
+	return sql
 }
 
 // Expand increases the size of this bounds in all directions, respecting

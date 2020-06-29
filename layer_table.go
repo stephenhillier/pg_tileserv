@@ -29,7 +29,9 @@ type LayerTable struct {
 	GeometryType   string
 	IdColumn       string
 	GeometryColumn string
-	Srid           int
+	// SpatialType is the PostGIS datatype of the spatial column (Geometry or Geography)
+	SpatialType string
+	Srid        int
 }
 
 type TableProperty struct {
@@ -337,6 +339,7 @@ func (lyr *LayerTable) requestSql(tile *Tile, qp *queryParameters) (string, erro
 		Schema         string
 		Table          string
 		GeometryColumn string
+		SpatialType    string
 		Srid           int
 	}
 
@@ -345,8 +348,8 @@ func (lyr *LayerTable) requestSql(tile *Tile, qp *queryParameters) (string, erro
 	tileBounds := tile.Bounds()
 	queryBounds := tile.Bounds()
 	queryBounds.Expand(tile.Width() * float64(qp.Buffer) / float64(qp.Resolution))
-	tileSql := tileBounds.SQL()
-	tileQuerySql := queryBounds.SQL()
+	tileSql := tileBounds.SQL(lyr.SpatialType, lyr.Srid)
+	tileQuerySql := queryBounds.SQL(lyr.SpatialType, lyr.Srid)
 
 	// preserve case and special characters in column names
 	// of SQL query by double quoting names
@@ -389,7 +392,7 @@ func (lyr *LayerTable) requestSql(tile *Tile, qp *queryParameters) (string, erro
 	SELECT ST_AsMVT(mvtgeom, {{ .MvtParams }}) FROM (
 		SELECT ST_AsMVTGeom(
 			ST_Transform(ST_Force2D(t."{{ .GeometryColumn }}"::geometry), 3857),
-			bounds.geom_clip,
+			ST_Transform(bounds.geom_clip::geometry, 3857),
 			{{ .Resolution }},
 			{{ .Buffer }}
 		  ) AS "{{ .GeometryColumn }}"
@@ -400,8 +403,7 @@ func (lyr *LayerTable) requestSql(tile *Tile, qp *queryParameters) (string, erro
 			SELECT {{ .TileSql }}  AS geom_clip,
 					{{ .QuerySql }} AS geom_query
 			) bounds
-		WHERE ST_Intersects(t."{{ .GeometryColumn }}"::geometry,
-							ST_Transform(bounds.geom_query, {{ .Srid }}))
+		WHERE ST_Intersects(t."{{ .GeometryColumn }}", bounds.geom_query)
 		{{ .Limit }}
 	) mvtgeom
 	`
@@ -422,6 +424,7 @@ func GetTableLayers() ([]LayerTable, error) {
 		c.relname AS table,
 		coalesce(d.description, '') AS description,
 		a.attname AS geometry_column,
+		t.typname AS spatial_type,
 		postgis_typmod_srid(a.atttypmod) AS srid,
 		trim(trailing 'ZM' from postgis_typmod_type(a.atttypmod)) AS geometry_type,
 		coalesce(ia.attname, '') AS id_column,
@@ -466,13 +469,13 @@ func GetTableLayers() ([]LayerTable, error) {
 	for rows.Next() {
 
 		var (
-			id, schema, table, description, geometry_column string
-			srid                                            int
-			geometry_type, id_column                        string
-			atts                                            pgtype.TextArray
+			id, schema, table, description, geometry_column, spatial_type string
+			srid                                                          int
+			geometry_type, id_column                                      string
+			atts                                                          pgtype.TextArray
 		)
 
-		err := rows.Scan(&id, &schema, &table, &description, &geometry_column,
+		err := rows.Scan(&id, &schema, &table, &description, &geometry_column, &spatial_type,
 			&srid, &geometry_type, &id_column, &atts)
 		if err != nil {
 			return nil, err
@@ -510,6 +513,7 @@ func GetTableLayers() ([]LayerTable, error) {
 			Table:          table,
 			Description:    description,
 			GeometryColumn: geometry_column,
+			SpatialType:    spatial_type,
 			Srid:           srid,
 			GeometryType:   geometry_type,
 			IdColumn:       id_column,
